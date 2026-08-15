@@ -1,79 +1,72 @@
+import random
+
 import pytest
+
 from rbtree import Tree
-
-
-def inorder_values(node):
-    if node is None:
-        return []
-    return inorder_values(node.left) + [node.value] + inorder_values(node.right)
-
-
-def assert_bst_property(root):
-    vals = inorder_values(root)
-    assert vals == sorted(vals), f"BST property violated: {vals}"
-
-
-def assert_root_black(tree):
-    assert tree.root is not None
-    assert tree.root.color == "black", "Root must be black"
-
-
-def assert_no_red_red(node):
-    """No red node can have a red child."""
-    if node is None:
-        return
-    if node.color == "red":
-        if node.left is not None:
-            assert node.left.color == "black", f"Red-Red violation at {node.value} -> left {node.left.value}"
-        if node.right is not None:
-            assert node.right.color == "black", f"Red-Red violation at {node.value} -> right {node.right.value}"
-    assert_no_red_red(node.left)
-    assert_no_red_red(node.right)
-
-
-def assert_parent_pointers(node):
-    """Child.parent should point back to node."""
-    if node is None:
-        return
-    if node.left is not None:
-        assert node.left.parent is node, f"Bad parent pointer: {node.left.value}.parent != {node.value}"
-        assert node.left.direction == "left"
-    if node.right is not None:
-        assert node.right.parent is node, f"Bad parent pointer: {node.right.value}.parent != {node.value}"
-        assert node.right.direction == "right"
-    assert_parent_pointers(node.left)
-    assert_parent_pointers(node.right)
 
 
 @pytest.mark.parametrize(
     "values",
     [
-        [5, 9, 6],
+        [5, 9, 6],                    # Right-left rotation
+        [10, 5, 1],                   # Left-left rotation
+        [10, 5, 7],                   # Left-right rotation
+        [10, 15, 20],                 # Right-right rotation
         [10, 5, 15, 1, 7, 12, 20],
-        [5, 1, 9, 0, 3, 8, 6],
         [7, 3, 18, 10, 22, 8, 11, 26],
     ],
 )
-def test_insert_preserves_basic_rb_properties(values):
-    t = Tree(values[0])
-    for v in values[1:]:
-        t.insert_and_balance(v)
+def test_insert_preserves_all_red_black_properties(values):
+    tree = Tree(values[0])
 
-    assert_root_black(t)
-    assert_bst_property(t.root)
-    assert_no_red_red(t.root)
-    assert_parent_pointers(t.root)
+    for value in values[1:]:
+        tree.insert(value)
+
+    assert tree.validate()
+    assert list(tree) == sorted(values)
 
 
-def test_insert_many_random_values():
-    t = Tree(50)
-    values = list(range(0, 100))
-    # deterministic shuffle without relying on random seed
-    values = values[::2] + values[1::2]
-    for v in values:
-        if v != 50:
-            t.insert_and_balance(v)
+def test_many_deterministic_random_insertions():
+    values = list(range(500))
+    random.Random(2026).shuffle(values)
 
-    assert_root_black(t)
-    assert_bst_property(t.root)
-    assert_no_red_red(t.root)
+    tree = Tree(values[0])
+
+    for value in values[1:]:
+        tree.insert(value)
+        assert tree.validate()
+
+    assert list(tree) == sorted(values)
+
+
+def test_duplicate_values_are_supported():
+    tree = Tree(5)
+
+    for value in [5, 5, 3, 7, 5]:
+        tree.insert(value)
+
+    assert tree.validate()
+    assert list(tree) == [3, 5, 5, 5, 5, 7]
+
+
+def test_lookup_and_python_membership():
+    tree = Tree(10)
+
+    for value in [4, 14, 2, 7]:
+        tree.insert(value)
+
+    assert tree.contains(7)
+    assert 14 in tree
+    assert 99 not in tree
+    assert "10" not in tree
+
+
+def test_in_order_traversal_includes_color_metadata():
+    tree = Tree(5)
+    tree.insert(9)
+    tree.insert(6)
+
+    traversal = tree.in_order_traversal()
+
+    assert [value for value, _ in traversal] == [5, 6, 9]
+    assert {color for _, color in traversal} <= {"red", "black"}
