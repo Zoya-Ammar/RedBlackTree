@@ -1,334 +1,284 @@
+"""A red-black tree implementation with insertion and validation helpers."""
 
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterator, Literal, Optional
+
+Color = Literal["red", "black"]
+Direction = Literal["left", "right", "root"]
+
+
+@dataclass
 class Node:
-    def __init__(self, value, left, right, direction, parent, color="red"):
-        self.value=value
-        self.left=left
-        self.right=right
-        self.color=color
-        self.parent=parent
-        self.direction=direction
-    def set_right(self, value):
-        self.right=Node(value, None, None, "right", self)
-    def set_left(self,value):
-        self.left=Node(value, None, None, "left", self)
-    def print(self):
-        print("value is equal to" , self.value, "right child is", self.right, "left child is", self.left, "color is", self.color)
-    
-   
+    """A node stored in :class:`Tree`."""
+
+    value: int | float
+    left: Optional["Node"] = None
+    right: Optional["Node"] = None
+    direction: Direction = "root"
+    parent: Optional["Node"] = None
+    color: Color = "red"
+
+    def set_right(self, value: int | float) -> "Node":
+        self.right = Node(value, direction="right", parent=self)
+        return self.right
+
+    def set_left(self, value: int | float) -> "Node":
+        self.left = Node(value, direction="left", parent=self)
+        return self.left
+
+    def __repr__(self) -> str:
+        return f"Node(value={self.value!r}, color={self.color!r})"
+
+
 class Tree:
-    def __init__(self, value):
-        self.root=Node(value, None, None, "root", None, "black")
+    """A red-black binary search tree.
 
-    def add(self, item):
-        grandparent=None
-        current_node=self.root
-        direction_of_sibling=""
-        while(True):
-            if (item<current_node.value):
-                if (current_node.left != None):
-                    grandparent=current_node
-                    current_node=current_node.left
-                    direction_of_sibling="right"
-                else:
-                    current_node.set_left(item)
-                    sibling=None
-                    #return x,y,z,sibling
-                    if direction_of_sibling=="right" and grandparent !=None:
-                        sibling=grandparent.right  
-                    elif direction_of_sibling=="left" and grandparent !=None:
-                        sibling=grandparent.left
-                    return current_node.left, current_node, grandparent, sibling
+    Duplicate values are allowed and are inserted into the right subtree.
+    Insertion and lookup are O(log n), while traversal is O(n).
+    """
+
+    def __init__(self, value: int | float):
+        self.root = Node(value, color="black")
+
+    @staticmethod
+    def _color(node: Optional[Node]) -> Color:
+        return "black" if node is None else node.color
+
+    def add(self, item: int | float) -> Node:
+        """Insert item as in a regular BST and return its new red node."""
+        current = self.root
+
+        while True:
+            if item < current.value:
+                if current.left is None:
+                    return current.set_left(item)
+                current = current.left
             else:
-                if (current_node.right != None):
-                    grandparent=current_node
-                    current_node=current_node.right
-                    direction_of_sibling="left"
-                else:
-                    current_node.set_right(item)
-                    sibling=None
-                    #return x,y,z,sibling
-                    if direction_of_sibling=="right" and grandparent !=None:
-                        sibling=grandparent.right  
-                    elif direction_of_sibling=="left" and grandparent !=None:
-                        sibling=grandparent.left
-                    return current_node.right, current_node, grandparent, sibling
-                            
-    def insert_and_balance(self, item):
-        x,y,z,s=self.add(item)
-        self.rebalance_insert(x)
+                if current.right is None:
+                    return current.set_right(item)
+                current = current.right
 
-        #will be shorter
-        #will call add and rebalanceInsert method within insert method
-        
-    def rebalance_insert(self, x):
-        if self.root==x:
-            x.color="black"
-        else:                    
-            x.color="red"
-            y=x.parent
-            if y.color=="red":
-                z=y.parent
-                if y.direction=="right":
-                    s=z.left
-                else:
-                    s=z.right
-                #double red condition. Balance out depending
-                #on color of sibling
+    def insert_and_balance(self, item: int | float) -> Node:
+        """Insert item, restore all red-black properties, and return the node."""
+        node = self.add(item)
+        self.rebalance_insert(node)
+        return node
 
-                if s==None or s.color=="black":
-                    a,b,c=self.restructure(x)
-                    b.color="black"
-                    a.color="red"
-                    c.color="red"
-                else:
-                    y.color="black"
-                    s.color="black"
-                    z.color="red"
-                    self.rebalance_insert(z)
+    insert = insert_and_balance
 
-    def restructure(self, x):
-        y = x.parent
-        z = y.parent
-    
-        ## Left Left condition
-        if y.direction == "left" and x.direction == "left":
-		## Store metadata about z
-            original_z_direction = z.direction
-            original_z_parent = z.parent
-		
-        ## Swapping y,z and t as needed
-            t = y.right
-            y.right = z
-            z.left = t
-		
-		## Change the direction and parents of y, z and t as needed
-            if t !=None:
-                t.parent = z
-                t.direction = "left"
-		
-            z.parent = y
-            z.direction = "right"
-		
-            if original_z_direction == "root":
-		    ## Set the root of tree as y
-                y.direction = "root"
-                y.parent = None
-                self.root = y
-            elif original_z_direction == "left":
-                y.direction = "left"
-                y.parent = original_z_parent
-                original_z_parent.left = y
+    def rebalance_insert(self, node: Node) -> None:
+        """Repair red-red violations following an insertion."""
+        while node.parent is not None and node.parent.color == "red":
+            parent = node.parent
+            grandparent = parent.parent
+
+            if grandparent is None:
+                break
+
+            if parent is grandparent.left:
+                uncle = grandparent.right
+
+                if self._color(uncle) == "red":
+                    parent.color = "black"
+
+                    assert uncle is not None
+                    uncle.color = "black"
+
+                    grandparent.color = "red"
+                    node = grandparent
+                else:
+                    if node is parent.right:
+                        node = parent
+                        self._rotate_left(node)
+
+                        parent = node.parent
+                        assert parent is not None
+
+                        grandparent = parent.parent
+                        assert grandparent is not None
+
+                    parent.color = "black"
+                    grandparent.color = "red"
+                    self._rotate_right(grandparent)
             else:
-                y.direction = "right"
-                y.parent = original_z_parent
-                original_z_parent.right = y
-            return x,y,z
-        elif y.direction=="right" and x.direction=="right":
+                uncle = grandparent.left
 
-            original_z_direction=z.direction
-            original_z_parent=z.parent
-            #Perform swapping
-            t=y.left
-            y.left=z
-            z.right=t
+                if self._color(uncle) == "red":
+                    parent.color = "black"
 
+                    assert uncle is not None
+                    uncle.color = "black"
 
-            #Update Properties
-        
-            if t!=None:
-                t.parent=z
-                t.direction="right"
+                    grandparent.color = "red"
+                    node = grandparent
+                else:
+                    if node is parent.left:
+                        node = parent
+                        self._rotate_right(node)
 
-            z.parent=y
-            z.direction="left"
+                        parent = node.parent
+                        assert parent is not None
 
-            if original_z_direction=="root":
-                y.direction="root"
-                y.parent=None
-                self.root=y
+                        grandparent = parent.parent
+                        assert grandparent is not None
 
+                    parent.color = "black"
+                    grandparent.color = "red"
+                    self._rotate_left(grandparent)
 
+        self.root.color = "black"
+        self.root.parent = None
+        self.root.direction = "root"
 
-            elif original_z_direction=="left":
-                y.direction="left"
-                y.parent=original_z_parent
-                original_z_parent.left=y
+    def _replace_parent_link(self, old: Node, new: Node) -> None:
+        parent = old.parent
+        new.parent = parent
 
-
-
-            else:
-                y.direction="right"
-                y.parent=original_z_parent
-                original_z_parent.right=y
-        
-            return x,y,z
-
-        elif y.direction=="left" and x.direction=="right":
-
-            z.left=x
-            x.left=y
-            y.right=None
-            #Update directions for x
-
-            x.direction="left"
-
-            #Update parents for x and y
-            x.parent=z
-            y.parent=x
-            
-            
-
-            return self.restructure(y)
-
+        if parent is None:
+            self.root = new
+            new.direction = "root"
+        elif old is parent.left:
+            parent.left = new
+            new.direction = "left"
         else:
+            parent.right = new
+            new.direction = "right"
 
-            #Perform SWAP
+    def _rotate_left(self, pivot: Node) -> None:
+        child = pivot.right
 
-            z.right=x
-            x.right=y
-            y.left=None
+        if child is None:
+            raise ValueError("A left rotation requires a right child")
 
-            #Update directions for all variables
-            
-            y.parent=x
-            x.parent=z
-            x.direction="right"
-            
+        self._replace_parent_link(pivot, child)
 
+        pivot.right = child.left
 
+        if pivot.right is not None:
+            pivot.right.parent = pivot
+            pivot.right.direction = "right"
 
-            #Update Parents
+        child.left = pivot
+        pivot.parent = child
+        pivot.direction = "left"
 
-            return self.restructure(y)
-            
+    def _rotate_right(self, pivot: Node) -> None:
+        child = pivot.left
 
-		
-    
+        if child is None:
+            raise ValueError("A right rotation requires a left child")
 
-    def print(self):
-        #obtain current_node. Traverse to the left. Once the child of the current_node is a None node, print current_node.
-        #Print parent of current_node. Print right child or parent node.
+        self._replace_parent_link(pivot, child)
 
-        #Start from left. Left most node in tree. Once we reach left most node. Print that node
-        #Print parent node. Traverse towareds right.
+        pivot.left = child.right
 
+        if pivot.left is not None:
+            pivot.left.parent = pivot
+            pivot.left.direction = "left"
 
-        current_node=self.root
+        child.right = pivot
+        pivot.parent = child
+        pivot.direction = "right"
 
-        self.in_order_traversal(current_node)
+    def contains(self, item: int | float) -> bool:
+        """Return whether item exists in the tree."""
+        current: Optional[Node] = self.root
 
-    def in_order_traversal(self, node):
-        if node.left !=None:
-            self.in_order_traversal(node.left)
-       
-        print(node.value, node.color)
+        while current is not None:
+            if item == current.value:
+                return True
 
-        if node.right !=None:
-            self.in_order_traversal(node.right)
+            current = (
+                current.left
+                if item < current.value
+                else current.right
+            )
 
+        return False
 
-            
+    def __contains__(self, item: object) -> bool:
+        if not isinstance(item, (int, float)):
+            return False
 
-        
-        
+        return self.contains(item)
 
-        
+    def __iter__(self) -> Iterator[int | float]:
+        stack: list[Node] = []
+        current: Optional[Node] = self.root
 
+        while stack or current is not None:
+            while current is not None:
+                stack.append(current)
+                current = current.left
 
+            current = stack.pop()
+            yield current.value
+            current = current.right
 
+    def in_order_traversal(
+        self,
+        node: Optional[Node] = None,
+    ) -> list[tuple[int | float, Color]]:
+        """Return (value, color) pairs in sorted order."""
+        start = self.root if node is None else node
+        result: list[tuple[int | float, Color]] = []
 
-            #
-            
+        def visit(current: Optional[Node]) -> None:
+            if current is None:
+                return
 
-            
+            visit(current.left)
+            result.append((current.value, current.color))
+            visit(current.right)
 
+        visit(start)
+        return result
 
+    def print(self) -> None:
+        """Print the in-order traversal, one value and color per line."""
+        for value, color in self.in_order_traversal():
+            print(value, color)
 
-    # def obtain_values(self, item):
-    #     #obtain node, parent, grandparent, grandparent's parent, and sibling
-    #     #obtain x,y,z, grandparent's parent, and s
-    #     great_grandparent=None
-    #     grandparent=None
-    #     current_node=self.root
-    #     direction_of_sibling=""
-    #     while(True):
-    #         if (item<current_node.value):
-    #             if (current_node.left != None):
-    #                 great_grandparent=grandparent
-    #                 grandparent=current_node
-    #                 current_node=current_node.left
-    #                 direction_of_sibling="right"
+    def validate(self) -> bool:
+        """Raise AssertionError on an invariant violation; otherwise return True."""
+        assert self.root.color == "black", "The root must be black"
+        assert self.root.parent is None
+        assert self.root.direction == "root"
 
-    #             else:
-    #                 sibling=None
-    #                 #return x,y,z,sibling
-    #                 if direction_of_sibling=="right" and grandparent !=None:
-    #                     sibling=grandparent.right  
-    #                 elif direction_of_sibling=="left" and grandparent !=None:
-    #                     sibling=grandparent.left
-    #                 return current_node.left, current_node, grandparent, great_grandparent, sibling
+        def check(
+            node: Optional[Node],
+            low: Optional[float],
+            high: Optional[float],
+        ) -> int:
+            if node is None:
+                return 1
 
+            if low is not None:
+                assert node.value >= low, "BST lower bound violated"
 
-    #         else:
-    #             if (current_node.right != None):
-    #                 great_grandparent=grandparent
-    #                 grandparent=current_node
-    #                 current_node=current_node.right
-    #                 direction_of_sibling="left"
-    #             else:
-    #                 sibling=None
-    #                 #return x,y,z,sibling
-    #                 if direction_of_sibling=="right" and grandparent !=None:
-    #                     sibling=grandparent.right  
-    #                 elif direction_of_sibling=="left" and grandparent !=None:
-    #                     sibling=grandparent.left
-    #                 return current_node.right, current_node, grandparent, great_grandparent, sibling
+            if high is not None:
+                assert node.value <= high, "BST upper bound violated"
 
+            if node.left is not None:
+                assert node.left.parent is node
+                assert node.left.direction == "left"
 
+            if node.right is not None:
+                assert node.right.parent is node
+                assert node.right.direction == "right"
 
+            if node.color == "red":
+                assert self._color(node.left) == "black"
+                assert self._color(node.right) == "black"
 
-        
+            left_height = check(node.left, low, node.value)
+            right_height = check(node.right, node.value, high)
 
-        #pseudocode is provided
-        #think about way to get parent, grandparent, and sibling
-        #multiple inside rebalance insert
-        #utility functions(to get parent of node)
+            assert left_height == right_height, "Black-height mismatch"
 
+            return left_height + (node.color == "black")
 
-
-
-        #if we are at root node, return root node. otherwise, traverse everything else.
-
-    
-
-
-
-t=Tree(5)
-t.insert_and_balance(9)
-t.insert_and_balance(6)
-# t.insert_and_balance(1)
-# t.insert_and_balance(9)
-# t.insert_and_balance(0)
-# t.insert_and_balance(0.5)
-# t.insert_and_balance(3)
-# t.insert_and_balance(8)
-# t.insert_and_balance(6)
-
-
-t.print()
-print(t.root.value)
-
-
-
-
-
-
-
-
-
-
-#Add a node
-
-#might need rotation algorithm
-
-#try implement other things in template
+        check(self.root, None, None)
+        return True
